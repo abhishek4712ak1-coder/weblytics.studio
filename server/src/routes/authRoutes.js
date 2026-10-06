@@ -1,4 +1,5 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 
 import {
   loginAdmin,
@@ -7,9 +8,6 @@ import {
 } from "../controllers/authController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
-
-import rateLimit from "express-rate-limit";
-
 
 const router = express.Router();
 
@@ -20,13 +18,25 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const passwordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Login
 router.post("/login", loginLimiter, loginAdmin);
 
+// Current admin
 router.get("/me", protect, getCurrentAdmin);
 
-router.put("/change-password", protect, changePassword);
-
-
-
+// Change password
+router.patch(
+  "/change-password",
+  protect,
+  passwordLimiter,
+  changePassword
+);
 
 export default router;

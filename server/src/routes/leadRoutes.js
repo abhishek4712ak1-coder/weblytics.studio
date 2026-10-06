@@ -3,18 +3,32 @@ import express from "express";
 import {
   createLead,
   getLeads,
-  updateLeadStatus,
+  updateLead,
+  deleteLead,
 } from "../controllers/leadController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Public
+/*
+|--------------------------------------------------------------------------
+| Public
+|--------------------------------------------------------------------------
+*/
+
 router.post("/", createLead);
 
-// Protected admin routes
+/*
+|--------------------------------------------------------------------------
+| Admin
+|--------------------------------------------------------------------------
+*/
+
 router.get("/", protect, getLeads);
-router.patch("/:id", protect, updateLeadStatus);
+
+router.patch("/:id", protect, updateLead);
+
+router.delete("/:id", protect, deleteLead);
 
 export default router;

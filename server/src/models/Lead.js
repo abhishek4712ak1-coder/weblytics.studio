@@ -18,17 +18,18 @@ const leadSchema = new mongoose.Schema(
     phone: {
       type: String,
       trim: true,
+      default: "",
     },
 
     service: {
       type: String,
-      required: true,
       enum: [
         "Web Development",
         "AI & Automation",
         "Data Analytics",
         "Other",
       ],
+      default: "Other",
     },
 
     message: {
@@ -39,8 +40,35 @@ const leadSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["New", "Contacted", "In Progress", "Converted", "Closed"],
+      enum: [
+        "New",
+        "Contacted",
+        "In Progress",
+        "Converted",
+        "Closed",
+      ],
       default: "New",
+    },
+
+    // Message management
+    isRead: {
+      type: Boolean,
+      default: false,
+    },
+
+    isReplied: {
+      type: Boolean,
+      default: false,
+    },
+
+    readAt: {
+      type: Date,
+      default: null,
+    },
+
+    repliedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

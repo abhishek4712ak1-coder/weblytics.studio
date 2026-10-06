@@ -178,6 +178,13 @@ export const changePassword = async (req, res) => {
       });
     }
 
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be different from the current password.",
+      });
+    }
+
     const admin = await Admin.findById(req.admin.id).select("+password");
 
     if (!admin) {
