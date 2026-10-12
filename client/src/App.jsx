@@ -7,11 +7,11 @@ import {
 import { FaInstagram, FaYoutube, FaGithub } from "react-icons/fa";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-const WHATSAPP_NUMBER = "YOUR_WHATSAPP_NUMBER";
+const WHATSAPP_NUMBER = "8755720396";
 const CONTACT_EMAIL = "team.weblytics@outlook.com";
 const INSTAGRAM_URL = "https://www.instagram.com/team.weblytics/";
 const YOUTUBE_URL = "https://www.youtube.com/@team.weblytics/";
-const GITHUB_URL = "https://github.com/abhishek4712ak";
+const GITHUB_URL = "https://github.com/";
 const THEME_KEY = "weblytics_theme";
 const NAV = ["home", "services", "about", "projects", "contact"];
 
