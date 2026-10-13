@@ -61,6 +61,21 @@ const emptyService = {
   displayOrder: 0,
 };
 
+const emptyProject = {
+  title: "",
+  shortDescription: "",
+  description: "",
+  category: "Web Development",
+  imageUrl: "",
+  liveUrl: "",
+  githubUrl: "",
+  technologies: "",
+  features: "",
+  featured: false,
+  published: false,
+  displayOrder: 0,
+};
+
 /* =========================================================
    THEME DEFINITIONS
 ========================================================= */
@@ -190,6 +205,17 @@ function App() {
   /* =========================================================
      MESSAGES
   ========================================================= */
+  /* PROJECTS */
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [projectForm, setProjectForm] = useState({ ...emptyProject });
+  const [projectError, setProjectError] = useState("");
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectImagePreview, setProjectImagePreview] = useState("");
+  const [projectImageUploading, setProjectImageUploading] = useState(false);
+
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messageSearch, setMessageSearch] = useState("");
@@ -310,6 +336,7 @@ function App() {
     setRecentLeads([]);
     setLeads([]);
     setServices([]);
+    setProjects([]);
     setMessages([]);
     setSelectedMessage(null);
     setMessageError("");
@@ -528,6 +555,263 @@ function App() {
   };
 
   /* =========================================================
+     PROJECTS
+  ========================================================= */
+  const fetchProjects = async () => {
+    try {
+      setProjectsLoading(true);
+      const response = await fetch(`${API_URL}/projects/admin`, {
+        headers: authHeaders(),
+      });
+
+      if (response.status === 401) {
+        handleLogout(false);
+        return;
+      }
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to load projects.");
+      }
+
+      setProjects(Array.isArray(data) ? data : data.projects || []);
+    } catch (error) {
+      console.error("Projects loading error:", error);
+      showNotification("error", error.message || "Failed to load projects.");
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
+  const openCreateProject = () => {
+    setEditingProject(null);
+    setProjectForm({ ...emptyProject });
+    setProjectImagePreview("");
+    setProjectError("");
+    setProjectModalOpen(true);
+  };
+
+  const openEditProject = (project) => {
+    setEditingProject(project);
+    setProjectForm({
+      title: project.title || "",
+      shortDescription: project.shortDescription || "",
+      description: project.description || "",
+      category: project.category || "Web Development",
+      imageUrl: project.imageUrl || "",
+      liveUrl: project.liveUrl || "",
+      githubUrl: project.githubUrl || "",
+      technologies: Array.isArray(project.technologies)
+        ? project.technologies.join("\n")
+        : "",
+      features: Array.isArray(project.features)
+        ? project.features.join("\n")
+        : "",
+      featured: Boolean(project.featured),
+      published: Boolean(project.published),
+      displayOrder: project.displayOrder ?? 0,
+    });
+    setProjectImagePreview(project.imageUrl || "");
+    setProjectError("");
+    setProjectModalOpen(true);
+  };
+
+  const handleProjectInput = (event) => {
+    const { name, value, type, checked } = event.target;
+    setProjectForm((previous) => ({
+      ...previous,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+    setProjectError("");
+  };
+
+  const handleProjectImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setProjectError("Choose a JPEG, PNG, WebP, or GIF image.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setProjectError("Image must be 5 MB or smaller.");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setProjectImagePreview(previewUrl);
+    setProjectError("");
+    setProjectImageUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+
+      // The browser must set the multipart Content-Type boundary itself.
+      const headers = { ...authHeaders() };
+      delete headers["Content-Type"];
+
+      const response = await fetch(`${API_URL}/projects/upload-image`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+
+      if (response.status === 401) {
+        handleLogout(false);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success || !data.imageUrl) {
+        throw new Error(data.message || "Image upload failed.");
+      }
+
+      setProjectForm((previous) => ({
+        ...previous,
+        imageUrl: data.imageUrl,
+      }));
+      setProjectImagePreview(data.imageUrl);
+      setProjectError("");
+    } catch (error) {
+      console.error("Project image upload error:", error);
+      setProjectError(
+        error.message || "Could not upload the image. Please try again."
+      );
+    } finally {
+      setProjectImageUploading(false);
+    }
+  };
+
+  const removeProjectImage = () => {
+    setProjectForm((previous) => ({ ...previous, imageUrl: "" }));
+    setProjectImagePreview("");
+    setProjectError("");
+  };
+
+  const saveProject = async (event) => {
+    event.preventDefault();
+    setProjectError("");
+
+    if (projectImageUploading) {
+      setProjectError("Please wait for the image upload to finish.");
+      return;
+    }
+
+    if (!projectForm.title.trim()) {
+      setProjectError("Please enter a project title.");
+      return;
+    }
+
+    if (!projectForm.shortDescription.trim()) {
+      setProjectError("Please enter a short description.");
+      return;
+    }
+
+    const toLines = (value) =>
+      value.split("\n").map((item) => item.trim()).filter(Boolean);
+
+    const payload = {
+      title: projectForm.title.trim(),
+      shortDescription: projectForm.shortDescription.trim(),
+      description: projectForm.description.trim(),
+      category: projectForm.category,
+      imageUrl: projectForm.imageUrl.trim(),
+      liveUrl: projectForm.liveUrl.trim(),
+      githubUrl: projectForm.githubUrl.trim(),
+      technologies: toLines(projectForm.technologies),
+      features: toLines(projectForm.features),
+      featured: Boolean(projectForm.featured),
+      published: Boolean(projectForm.published),
+      displayOrder: Number(projectForm.displayOrder) || 0,
+    };
+
+    try {
+      setProjectSaving(true);
+
+      const response = await fetch(
+        editingProject
+          ? `${API_URL}/projects/${editingProject._id}`
+          : `${API_URL}/projects`,
+        {
+          method: editingProject ? "PATCH" : "POST",
+          headers: {
+            ...authHeaders(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.status === 401) {
+        handleLogout(false);
+        return;
+      }
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to save project.");
+      }
+
+      setProjectModalOpen(false);
+      setEditingProject(null);
+      setProjectForm({ ...emptyProject });
+      await fetchProjects();
+      showNotification(
+        "success",
+        editingProject
+          ? "Project updated successfully."
+          : "Project created successfully."
+      );
+    } catch (error) {
+      console.error("Project save error:", error);
+      setProjectError(error.message || "Failed to save project.");
+    } finally {
+      setProjectSaving(false);
+    }
+  };
+
+  const deleteProject = async (project) => {
+    if (!project?._id) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${project.title}"?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`${API_URL}/projects/${project._id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+
+      if (response.status === 401) {
+        handleLogout(false);
+        return;
+      }
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to delete project.");
+      }
+
+      setProjects((previous) =>
+        previous.filter((item) => item._id !== project._id)
+      );
+      showNotification("success", "Project deleted successfully.");
+    } catch (error) {
+      console.error("Project deletion error:", error);
+      showNotification("error", error.message || "Failed to delete project.");
+    }
+  };
+
+  /* =========================================================
      MESSAGES
   ========================================================= */
   const fetchMessages = async (showLoader = true) => {
@@ -701,6 +985,7 @@ function App() {
     if (activeSection === "dashboard") fetchDashboardStats();
     if (activeSection === "leads") fetchLeads();
     if (activeSection === "services") fetchServices();
+    if (activeSection === "projects") fetchProjects();
     if (activeSection === "messages") fetchMessages();
     if (activeSection === "settings") checkApiHealth();
   }, [activeSection, token]);
@@ -804,6 +1089,7 @@ function App() {
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={19} /> },
     { id: "leads", label: "Leads", icon: <Users size={19} /> },
     { id: "services", label: "Services", icon: <Code2 size={19} /> },
+    { id: "projects", label: "Projects", icon: <Code2 size={19} /> },
     { id: "messages", label: "Messages", icon: <Mail size={19} /> },
     { id: "settings", label: "Settings", icon: <Settings size={19} /> },
   ];
@@ -1392,6 +1678,7 @@ function App() {
                 if (activeSection === "dashboard") fetchDashboardStats();
                 if (activeSection === "leads") fetchLeads();
                 if (activeSection === "services") fetchServices();
+                if (activeSection === "projects") fetchProjects();
                 if (activeSection === "messages") fetchMessages();
                 if (activeSection === "settings") checkApiHealth();
               }}
@@ -2070,6 +2357,145 @@ function App() {
           )}
 
           {/* =================================================
+              PROJECTS
+          ================================================= */}
+          {activeSection === "projects" && (
+            <section>
+              <div style={{
+                display: "flex", flexWrap: "wrap", alignItems: "center",
+                justifyContent: "space-between", gap: "12px", marginBottom: "24px"
+              }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px", fontSize: "22px", fontWeight: 700, color: colors.text }}>
+                    Projects
+                  </h2>
+                  <p style={{ margin: 0, fontSize: "14px", color: colors.textMuted }}>
+                    Manage the projects displayed in your portfolio.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <button onClick={fetchProjects} style={s.outlineBtn} disabled={projectsLoading}>
+                    <RefreshCw size={16} /> Refresh
+                  </button>
+                  <button onClick={openCreateProject} style={s.primaryBtn}>
+                    <Plus size={17} /> Add Project
+                  </button>
+                </div>
+              </div>
+
+              {projectsLoading ? (
+                <div style={{ ...s.card, padding: "48px 20px", textAlign: "center", color: colors.textMuted }}>
+                  Loading projects...
+                </div>
+              ) : projects.length === 0 ? (
+                <div style={{ ...s.card, padding: "48px 20px", textAlign: "center" }}>
+                  <Code2 size={40} style={{ color: colors.textDim, marginBottom: "12px" }} />
+                  <h3 style={{ margin: "0 0 6px", fontSize: "16px", color: colors.text }}>
+                    No projects yet
+                  </h3>
+                  <p style={{ margin: "0 0 20px", fontSize: "14px", color: colors.textMuted }}>
+                    Add a project to start building your portfolio.
+                  </p>
+                  <button onClick={openCreateProject} style={s.primaryBtn}>
+                    <Plus size={17} /> Add Your First Project
+                  </button>
+                </div>
+              ) : (
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(290px, 1fr))",
+                  gap: "18px"
+                }}>
+                  {[...projects]
+                    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+                    .map((project) => (
+                      <article key={project._id} style={{ ...s.card, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                        {project.imageUrl ? (
+                          <img
+                            src={project.imageUrl}
+                            alt={project.title}
+                            loading="lazy"
+                            style={{ width: "100%", height: "175px", objectFit: "cover", background: colors.bgSecondary }}
+                            onError={(event) => { event.currentTarget.style.display = "none"; }}
+                          />
+                        ) : (
+                          <div style={{
+                            height: "110px", display: "flex", alignItems: "center",
+                            justifyContent: "center", background: colors.bgSecondary
+                          }}>
+                            <Code2 size={36} style={{ color: colors.textDim }} />
+                          </div>
+                        )}
+
+                        <div style={{ padding: "17px", display: "flex", flexDirection: "column", flex: 1 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "flex-start" }}>
+                            <div>
+                              <h3 style={{ margin: "0 0 6px", color: colors.text, fontSize: "17px" }}>
+                                {project.title}
+                              </h3>
+                              <span style={{ fontSize: "12px", color: colors.textDim }}>
+                                {project.category || "Other"}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", gap: "5px", flexShrink: 0 }}>
+                              <button onClick={() => openEditProject(project)} style={s.iconBtn} title="Edit project">
+                                <Pencil size={15} />
+                              </button>
+                              <button onClick={() => deleteProject(project)} style={{ ...s.iconBtn, color: colors.danger }} title="Delete project">
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <p style={{ margin: "12px 0", color: colors.textMuted, fontSize: "13px", lineHeight: 1.6 }}>
+                            {project.shortDescription}
+                          </p>
+
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "12px" }}>
+                            <span style={s.badge(project.published ? "active" : "inactive")}>
+                              {project.published ? "Published" : "Draft"}
+                            </span>
+                            {project.featured && <span style={s.badge("active")}>Featured</span>}
+                          </div>
+
+                          {Array.isArray(project.technologies) && project.technologies.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "14px" }}>
+                              {project.technologies.map((technology, index) => (
+                                <span key={`${technology}-${index}`} style={{
+                                  padding: "4px 8px", borderRadius: "6px",
+                                  background: colors.bgSecondary, color: colors.textMuted, fontSize: "11px"
+                                }}>
+                                  {technology}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "auto", fontSize: "12px" }}>
+                            {project.liveUrl && (
+                              <a href={project.liveUrl} target="_blank" rel="noreferrer"
+                                style={{ color: colors.accent, textDecoration: "none" }}>
+                                <Eye size={13} style={{ verticalAlign: "middle", marginRight: "4px" }} />
+                                Live Demo
+                              </a>
+                            )}
+                            {project.githubUrl && (
+                              <a href={project.githubUrl} target="_blank" rel="noreferrer"
+                                style={{ color: colors.accent, textDecoration: "none" }}>
+                                <Code2 size={13} style={{ verticalAlign: "middle", marginRight: "4px" }} />
+                                Source Code
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* =================================================
               MESSAGES
           ================================================= */}
           {activeSection === "messages" && (
@@ -2627,6 +3053,313 @@ function App() {
           )}
         </div>
       </div>
+
+      {/* =====================================================
+          PROJECT MODAL
+      ===================================================== */}
+      {projectModalOpen && (
+        <div
+          onClick={() => !projectSaving && setProjectModalOpen(false)}
+          style={{
+            position: "fixed", inset: 0, background: colors.overlay,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 110, padding: "20px"
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              ...s.card, width: "100%", maxWidth: "760px",
+              maxHeight: "92vh", overflowY: "auto"
+            }}
+          >
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+              padding: "20px 22px", borderBottom: `1px solid ${colors.border}`
+            }}>
+              <div>
+                <h2 style={{ margin: "0 0 4px", fontSize: "19px", fontWeight: 700, color: colors.text }}>
+                  {editingProject ? "Edit Project" : "Add Project"}
+                </h2>
+                <p style={{ margin: 0, fontSize: "13px", color: colors.textMuted }}>
+                  Project details shown on your public portfolio.
+                </p>
+              </div>
+              <button type="button" onClick={() => setProjectModalOpen(false)} style={s.iconBtn} disabled={projectSaving}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {projectError && (
+              <div style={{
+                display: "flex", gap: "10px", alignItems: "center",
+                margin: "16px 22px 0", padding: "12px 14px", borderRadius: "10px",
+                background: colors.dangerSoft, color: colors.danger, fontSize: "13px"
+              }}>
+                <AlertCircle size={17} /> {projectError}
+              </div>
+            )}
+
+            <form onSubmit={saveProject} style={{ padding: "20px 22px" }}>
+              <div style={{
+                display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: "16px", marginBottom: "16px"
+              }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                    Project Title *
+                  </label>
+                  <input name="title" value={projectForm.title} onChange={handleProjectInput}
+                    required maxLength={120} placeholder="e.g. E-commerce Platform"
+                    style={{ ...s.input, width: "100%", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                    Category
+                  </label>
+                  <select name="category" value={projectForm.category} onChange={handleProjectInput}
+                    style={{ ...s.input, width: "100%", boxSizing: "border-box" }}>
+                    <option>Web Development</option>
+                    <option>AI &amp; Automation</option>
+                    <option>Data Analytics</option>
+                    <option>Mobile App</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                  Short Description *
+                </label>
+                <textarea name="shortDescription" value={projectForm.shortDescription}
+                  onChange={handleProjectInput} required maxLength={300} rows={2}
+                  placeholder="A short summary displayed on the project card."
+                  style={{ ...s.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                  Full Description
+                </label>
+                <textarea name="description" value={projectForm.description}
+                  onChange={handleProjectInput} rows={4}
+                  placeholder="Describe the project, its purpose, and how it works."
+                  style={{ ...s.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} />
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{
+                  display: "block",
+                  marginBottom: "8px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: colors.textMuted
+                }}>
+                  Project Image
+                </label>
+
+                {projectImagePreview ? (
+                  <div style={{
+                    position: "relative",
+                    width: "100%",
+                    maxWidth: "440px",
+                    marginBottom: "12px",
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                    border: `1px solid ${colors.border}`,
+                    background: colors.background
+                  }}>
+                    <img
+                      src={projectImagePreview}
+                      alt="Project preview"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        maxHeight: "240px",
+                        objectFit: "contain"
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: "26px 16px",
+                    marginBottom: "12px",
+                    border: `1px dashed ${colors.border}`,
+                    borderRadius: "12px",
+                    textAlign: "center",
+                    color: colors.textMuted,
+                    fontSize: "13px"
+                  }}>
+                    No project image selected
+                  </div>
+                )}
+
+                <div style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  alignItems: "center"
+                }}>
+                  <label
+                    style={{
+                      ...s.primaryBtn,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      cursor: projectImageUploading ? "wait" : "pointer",
+                      opacity: projectImageUploading ? 0.65 : 1
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={handleProjectImageChange}
+                      disabled={projectImageUploading || projectSaving}
+                      style={{
+                        position: "absolute",
+                        width: "1px",
+                        height: "1px",
+                        padding: 0,
+                        margin: "-1px",
+                        overflow: "hidden",
+                        clip: "rect(0, 0, 0, 0)",
+                        whiteSpace: "nowrap",
+                        border: 0
+                      }}
+                    />
+                    {projectImageUploading ? "Uploading image..." : "Choose Image"}
+                  </label>
+
+                  {projectImagePreview && (
+                    <button
+                      type="button"
+                      onClick={removeProjectImage}
+                      disabled={projectImageUploading || projectSaving}
+                      style={s.secondaryBtn || s.iconBtn}
+                    >
+                      Remove Image
+                    </button>
+                  )}
+                </div>
+
+                <p style={{
+                  margin: "8px 0 0",
+                  color: colors.textMuted,
+                  fontSize: "12px",
+                  lineHeight: 1.5
+                }}>
+                  JPEG, PNG, WebP, or GIF · Maximum 5 MB. Images upload to Cloudinary when selected.
+                </p>
+
+                {projectImageUploading && (
+                  <p role="status" style={{
+                    margin: "8px 0 0",
+                    color: colors.textMuted,
+                    fontSize: "13px"
+                  }}>
+                    Uploading your image securely. Please wait...
+                  </p>
+                )}
+
+                {projectForm.imageUrl && !projectImageUploading && (
+                  <p style={{
+                    margin: "8px 0 0",
+                    color: colors.textMuted,
+                    fontSize: "11px",
+                    overflowWrap: "anywhere"
+                  }}>
+                    Image uploaded successfully.
+                  </p>
+                )}
+              </div>
+
+              <div style={{
+                display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: "16px", marginBottom: "16px"
+              }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                    Live Website URL
+                  </label>
+                  <input type="url" name="liveUrl" value={projectForm.liveUrl}
+                    onChange={handleProjectInput} placeholder="https://your-project.com"
+                    style={{ ...s.input, width: "100%", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                    GitHub URL
+                  </label>
+                  <input type="url" name="githubUrl" value={projectForm.githubUrl}
+                    onChange={handleProjectInput} placeholder="https://github.com/username/repository"
+                    style={{ ...s.input, width: "100%", boxSizing: "border-box" }} />
+                </div>
+              </div>
+
+              <div style={{
+                display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: "16px", marginBottom: "16px"
+              }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                    Technologies (one per line)
+                  </label>
+                  <textarea name="technologies" value={projectForm.technologies}
+                    onChange={handleProjectInput} rows={4} placeholder={"React\nNode.js\nMongoDB"}
+                    style={{ ...s.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                    Features (one per line)
+                  </label>
+                  <textarea name="features" value={projectForm.features}
+                    onChange={handleProjectInput} rows={4} placeholder={"User authentication\nAdmin dashboard"}
+                    style={{ ...s.input, width: "100%", boxSizing: "border-box", resize: "vertical" }} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "18px" }}>
+                <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", color: colors.textMuted }}>
+                  Display Order
+                </label>
+                <input type="number" name="displayOrder" value={projectForm.displayOrder}
+                  onChange={handleProjectInput} min="0" step="1"
+                  style={{ ...s.input, width: "150px", boxSizing: "border-box" }} />
+              </div>
+
+              <div style={{
+                display: "flex", flexWrap: "wrap", gap: "20px",
+                padding: "14px", marginBottom: "22px",
+                borderRadius: "10px", background: colors.bgSecondary
+              }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", color: colors.text, fontSize: "13px", cursor: "pointer" }}>
+                  <input type="checkbox" name="published" checked={Boolean(projectForm.published)} onChange={handleProjectInput} />
+                  Publish on public website
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", color: colors.text, fontSize: "13px", cursor: "pointer" }}>
+                  <input type="checkbox" name="featured" checked={Boolean(projectForm.featured)} onChange={handleProjectInput} />
+                  Mark as featured
+                </label>
+              </div>
+
+              <div style={{
+                display: "flex", justifyContent: "flex-end", gap: "10px",
+                paddingTop: "16px", borderTop: `1px solid ${colors.border}`
+              }}>
+                <button type="button" onClick={() => setProjectModalOpen(false)}
+                  style={s.outlineBtn} disabled={projectSaving}>
+                  Cancel
+                </button>
+                <button type="submit" style={s.primaryBtn} disabled={projectSaving}>
+                  <Save size={16} />
+                  {projectSaving ? "Saving..." : editingProject ? "Save Changes" : "Create Project"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* =====================================================
           SERVICE MODAL

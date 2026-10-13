@@ -10,6 +10,7 @@ import authRoutes from "./routes/authRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
+import projectRoutes from "./routes/projectRoutes.js";
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ app.use("/api/leads", leadRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/projects", projectRoutes);
 
 
 app.get("/api/health", (req, res) => {
