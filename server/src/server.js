@@ -57,7 +57,7 @@ app.use("/api/projects", projectRoutes);
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
-    message: "Weblytics Studio API is running.",
+    message: "Weblytics Studio is running.",
   });
 });
 
